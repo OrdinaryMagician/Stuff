@@ -445,6 +445,43 @@ int horconv( void )
 		}
 		return 1;
 	}
+	if ( (width == 1024) && (height == 32) )
+	{
+		/* 32x32x32 LUT */
+		printf("conv: horizontal 32x32x32 LUT\n");
+		ddshead.width = width = 32;
+		ddshead.height = height = 32;
+		ddshead.depth = depth = 32;
+		ddshead.pitch = 32*4;
+		s = width*height*depth*4;
+		outdata = malloc(s);
+		i = 0;
+		x = 0;
+		y = 0;
+		z = 0;
+		while ( i < s )
+		{
+			outdata[i++] = indata[(x+y*1024+z*32)*(3+alpha)];
+			outdata[i++] = indata[(x+y*1024+z*32)*(3+alpha)+1];
+			outdata[i++] = indata[(x+y*1024+z*32)*(3+alpha)+2];
+			if ( alpha )
+				outdata[i++] = indata[(x+y*1024+z*32)
+					*(3+alpha)+3];
+			else outdata[i++] = 255;
+			x++;
+			if ( x >= 32 )
+			{
+				x = 0;
+				y++;
+			}
+			if ( y >= 32 )
+			{
+				y = 0;
+				z++;
+			}
+		}
+		return 1;
+	}
 	printf("conv: Never heard of a LUT texture of %ux%u\n",width,height);
 	return 0;
 }
@@ -533,7 +570,7 @@ int loadpng( const char *filename )
 
 int main( int argc, char **argv )
 {
-	printf("LUTCONV 2.0 - (C)2017 Marisa Kirisame, UnSX Team.\n"
+	printf("LUTCONV 2.1 - (C)2017 Marisa Kirisame, UnSX Team.\n"
 		"This program is free software under the GNU GPL v3.\n"
 		"See https://www.gnu.org/licenses/gpl.html for details.\n\n");
 	if ( argc < 2 )
