@@ -1,5 +1,6 @@
 Random single-file programs I've written in my spare time for small tasks.
 
+* bleep: I got bored and decided to write a pc speaker music program.
 * ckmextract: Extracts ESP and BSA from Skyrim steam workshop mod archives.
 * ddsinfo: Shows contents of a DDS header.
 * dood: Reads an ENDOOM lump and mirrors every word "down the middle".
@@ -19,6 +20,7 @@ Random single-file programs I've written in my spare time for small tasks.
 * mkwall: A program I use on a daily basis to set my wallpaper on every Linux
   machine.
 * osnorm: Experiment for generating object-space normals from an .obj model.
+* pframes: Short utility for automating long FrameIndex lists for MODELDEF.
 * schange: Program used along with mkwall to update the wallpaper on screen
   geometry changes.
 * skse_cosave: Experiment for dumping information in SKSE co-saves.
@@ -26,6 +28,8 @@ Random single-file programs I've written in my spare time for small tasks.
   can be generated in bulk.
 * totty: Sends text from stdin to tty1. Used to send certain commands when
   remoting into a Raspberry Pi.
+* umxunpack: Extractor for music in UE archives, with support for Unreal 227's
+  UMX files containing vorbis audio.
 * vc2sdl: Passes the contents of the VC4 framebuffer to a SDL window. Was used
   for video playback experiments on a Raspberry Pi with a SPI LCD.
 * withhands: Talk like W.D. Gaster.
