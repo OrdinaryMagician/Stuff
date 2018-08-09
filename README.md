@@ -12,7 +12,7 @@ Random single-file programs I've written in my spare time for small tasks.
 * memrd/memsk/memwr: Quick 'n dirty tools for memory manipulation on running
   programs.
 * mkfont: A tool I use to convert UE fonts exported with UTPT into fonts for
-  GZDoom.
+  GZDoom. Requires ImageMagick to be installed.
 * mkgauss: Make an array of gaussian blur kernel values with passed radius and
   sigma. Used for shader development.
 * mksoundwad: Program used during the early days of Tim Allen Doom. Deprecated
