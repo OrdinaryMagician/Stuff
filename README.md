@@ -11,6 +11,8 @@ Random single-file programs I've written in my spare time for small tasks.
   in DDS volume maps. Successor to mkvolume. Used for MariENB.
 * memrd/memsk/memwr: Quick 'n dirty tools for memory manipulation on running
   programs.
+* mkfont: A tool I use to convert UE fonts exported with UTPT into fonts for
+  GZDoom.
 * mkgauss: Make an array of gaussian blur kernel values with passed radius and
   sigma. Used for shader development.
 * mksoundwad: Program used during the early days of Tim Allen Doom. Deprecated
@@ -28,6 +30,7 @@ Random single-file programs I've written in my spare time for small tasks.
   can be generated in bulk.
 * totty: Sends text from stdin to tty1. Used to send certain commands when
   remoting into a Raspberry Pi.
+* udmfvis: dmvis clone in C for UDMF maps. No external dependencies.
 * umxunpack: Extractor for music in UE archives, with support for Unreal 227's
   UMX files containing vorbis audio.
 * vc2sdl: Passes the contents of the VC4 framebuffer to a SDL window. Was used
