@@ -11,7 +11,7 @@
 #include <errno.h>
 
 /*
-   At the moment output is broken on most image editors, but it can be fixed by
+   At the moment output is broken on most image viewers, but it can be fixed by
    running it through gifsicle.
 
    Things left to do:
