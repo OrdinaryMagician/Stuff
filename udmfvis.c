@@ -538,7 +538,7 @@ int main( int argc, char **argv )
 		fprintf(stderr,"usage: %s <textmap> [width]\n",argv[0]);
 		return 1;
 	}
-	FILE *tmap = fopen(argv[1],"r");
+	FILE *tmap = fopen(argv[1],"rb");
 	if ( !tmap )
 	{
 		fprintf(stderr,"couldn't open textmap: %s\n",strerror(errno));
@@ -608,6 +608,12 @@ int main( int argc, char **argv )
 		}
 	}
 	fclose(tmap);
+	/* sanity check */
+	if ( (nverts <= 0) || (nlines <= 0) || (nsides <= 0) )
+	{
+		fprintf(stderr,"No valid map data found.\n");
+		return 4;
+	}
 	/* transfer info to sides */
 	for ( int i=0; i<nlines; i++ )
 	{
