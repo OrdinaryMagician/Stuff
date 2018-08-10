@@ -16,6 +16,15 @@
 
    Things left to do:
     - Figure out why output is bugged.
+    - Properly sort lines like dmvis.
+    - Full-sector drawing like dmvis.
+    - Skipping over already drawn lines like dmvis.
+    - Support doom/hexen map format and reading from wads.
+    - Rename project to "cdmvis" when the previous point is done.
+    - Customizable colorschemes.
+    - Fill sector insides.
+    - Isometric perspective view? (+ 3d floor and slope handling)
+    - Draw things too?
 */
 
 typedef struct
