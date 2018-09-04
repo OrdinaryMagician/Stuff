@@ -16,9 +16,7 @@
 
    Things left to do:
     - Figure out why output is bugged.
-    - Properly sort lines like dmvis.
-    - Full-sector drawing like dmvis.
-    - Skipping over already drawn lines like dmvis.
+    - Full-sector drawing option like dmvis.
     - Support doom/hexen map format and reading from wads.
     - Rename project to "cdmvis" when the previous point is done.
     - Customizable colorschemes.
@@ -36,34 +34,67 @@ typedef struct
 {
 	int v1, v2, type;
 	int fs, bs;
+	int done;
 } line_t;
 
 typedef struct
 {
-	int s;
+	int s, l;
 	int v1, v2, type;
 } side_t;
+
+typedef struct
+{
+	int *s;
+	int ns;
+} sector_t;
 
 vertex_t *verts = 0;
 line_t *lines = 0;
 side_t *sides = 0;
-int nverts = 0, nlines = 0, nsides = 0;
+sector_t *sectors = 0;
+int nverts = 0, nlines = 0, nsides = 0, nsectors = 0;
 
 #define LN_ONESIDED 0
 #define LN_TWOSIDED 1
 #define LN_ASPECIAL 2
 
-int cmp_sides_by_vertex( const void *a, const void *b )
+static void sort_sector( sector_t *s )
 {
-	side_t *sa = (side_t*)a;
-	side_t *sb = (side_t*)b;
-	return sa->v2 - sb->v1;
-}
-int cmp_sides_by_sector( const void *a, const void *b )
-{
-	side_t *sa = (side_t*)a;
-	side_t *sb = (side_t*)b;
-	return sa->s - sb->s;
+	// rearrange line indices in sector based on connected vertices
+	// find initial line (lowest v1)
+	int lowest = nverts;
+	int lowests = -1;
+	for ( int i=0; i<s->ns; i++ )
+	{
+		int ss = s->s[i];
+		if ( sides[ss].v1 < lowest )
+		{
+			lowest = sides[ss].v1;
+			lowests = ss;
+		}
+	}
+	// allocate new sides array
+	int *news = malloc(sizeof(int)*s->ns);
+	// place lowest first
+	news[0] = lowests;
+	// loop until filling
+	for ( int i=0; i<(s->ns-1); i++ )
+	{
+		// search for next connected line (v2 equal to current v1)
+		int next = -1;
+		for ( int j=0; j<s->ns; j++ )
+		{
+			if ( s->s[j] == news[i] ) continue;	// skip self
+			if ( sides[s->s[j]].v1 != sides[news[i]].v2 ) continue;
+			next = s->s[j];
+			break;
+		}
+		news[i+1] = next;
+	}
+	// delete old array and replace with this
+	free(s->s);
+	s->s = news;
 }
 
 #define LAST_NONE       0
@@ -113,37 +144,37 @@ static void bresenham( int col, int x0, int y0, int x1, int y1 )
 	}
 }
 
-void getsidebounds( int i, int *x, int *y, int *w, int *h )
+void getsidebounds( int i, int prev, int *x, int *y, int *w, int *h )
 {
 	int minx = 0, miny = 0, maxx = 0, maxy = 0;
-	if ( i < nsides )
+	if ( i != -1 )
 	{
-		if ( i > 0 )
+		if ( prev != -1 )
 		{
-			minx = verts[sides[i-1].v1].x;
-			if ( verts[sides[i-1].v2].x < minx )
-				minx = verts[sides[i-1].v2].x;
+			minx = verts[sides[prev].v1].x;
+			if ( verts[sides[prev].v2].x < minx )
+				minx = verts[sides[prev].v2].x;
 			if ( verts[sides[i].v1].x < minx )
 				minx = verts[sides[i].v1].x;
 			if ( verts[sides[i].v2].x < minx )
 				minx = verts[sides[i].v2].x;
-			maxx = verts[sides[i-1].v1].x;
-			if ( verts[sides[i-1].v2].x > maxx )
-				maxx = verts[sides[i-1].v2].x;
+			maxx = verts[sides[prev].v1].x;
+			if ( verts[sides[prev].v2].x > maxx )
+				maxx = verts[sides[prev].v2].x;
 			if ( verts[sides[i].v1].x > maxx )
 				maxx = verts[sides[i].v1].x;
 			if ( verts[sides[i].v2].x > maxx )
 				maxx = verts[sides[i].v2].x;
-			miny = verts[sides[i-1].v1].y;
-			if ( verts[sides[i-1].v2].y < miny )
-				miny = verts[sides[i-1].v2].y;
+			miny = verts[sides[prev].v1].y;
+			if ( verts[sides[prev].v2].y < miny )
+				miny = verts[sides[prev].v2].y;
 			if ( verts[sides[i].v1].y < miny )
 				miny = verts[sides[i].v1].y;
 			if ( verts[sides[i].v2].y < miny )
 				miny = verts[sides[i].v2].y;
-			maxy = verts[sides[i-1].v1].y;
-			if ( verts[sides[i-1].v2].y > maxy )
-				maxy = verts[sides[i-1].v2].y;
+			maxy = verts[sides[prev].v1].y;
+			if ( verts[sides[prev].v2].y > maxy )
+				maxy = verts[sides[prev].v2].y;
 			if ( verts[sides[i].v1].y > maxy )
 				maxy = verts[sides[i].v1].y;
 			if ( verts[sides[i].v2].y > maxy )
@@ -165,20 +196,20 @@ void getsidebounds( int i, int *x, int *y, int *w, int *h )
 				maxy = verts[sides[i].v2].y;
 		}
 	}
-	else if ( i > 0 )
+	else if ( prev != -1 )
 	{
-		minx = verts[sides[i-1].v1].x;
-		if ( verts[sides[i-1].v2].x < minx )
-			minx = verts[sides[i-1].v2].x;
-		maxx = verts[sides[i-1].v1].x;
-		if ( verts[sides[i-1].v2].x > maxx )
-			maxx = verts[sides[i-1].v2].x;
-		miny = verts[sides[i-1].v1].y;
-		if ( verts[sides[i-1].v2].y < miny )
-			miny = verts[sides[i-1].v2].y;
-		maxy = verts[sides[i-1].v1].y;
-		if ( verts[sides[i-1].v2].y > maxy )
-			maxy = verts[sides[i-1].v2].y;
+		minx = verts[sides[prev].v1].x;
+		if ( verts[sides[prev].v2].x < minx )
+			minx = verts[sides[prev].v2].x;
+		maxx = verts[sides[prev].v1].x;
+		if ( verts[sides[prev].v2].x > maxx )
+			maxx = verts[sides[prev].v2].x;
+		miny = verts[sides[prev].v1].y;
+		if ( verts[sides[prev].v2].y < miny )
+			miny = verts[sides[prev].v2].y;
+		maxy = verts[sides[prev].v1].y;
+		if ( verts[sides[prev].v2].y > maxy )
+			maxy = verts[sides[prev].v2].y;
 	}
 	*x = minx;
 	*y = miny;
@@ -186,32 +217,33 @@ void getsidebounds( int i, int *x, int *y, int *w, int *h )
 	*h = (maxy-miny) + 1;
 }
 
-void drawside( int i )
+void drawside( int i, int prev )
 {
 	// draw previous side normally (if any)
-	if ( i > 0 )
+	if ( prev >= 0 )
 	{
 		int c = 3;
-		if ( sides[i-1].type&LN_ASPECIAL ) c = 2;
-		else if ( sides[i-1].type&LN_TWOSIDED ) c = 4;
-		bresenham(c,verts[sides[i-1].v1].x,verts[sides[i-1].v1].y,
-			verts[sides[i-1].v2].x,verts[sides[i-1].v2].y);
+		if ( sides[prev].type&LN_ASPECIAL ) c = 2;
+		else if ( sides[prev].type&LN_TWOSIDED ) c = 4;
+		bresenham(c,verts[sides[prev].v1].x,verts[sides[prev].v1].y,
+			verts[sides[prev].v2].x,verts[sides[prev].v2].y);
 	}
 	// draw current line highlighted (if any)
-	if ( i < nsides )
+	if ( i >= 0 )
 	{
 		bresenham(1,verts[sides[i].v1].x,verts[sides[i].v1].y,
 			verts[sides[i].v2].x,verts[sides[i].v2].y);
+		lines[sides[i].l].done = 1;
 	}
 }
 
 uint8_t gifpal[8][3] =
 {
-	{255,255,255},	// background
-	{220,0,0},	// cursor
-	{220,130,50},	// special line
-	{0,0,0},	// one-sided line
-	{144,144,144},	// two-sided line
+	{0,0,0},	// background
+	{0,255,0},	// cursor
+	{255,255,0},	// special line
+	{255,0,0},	// one-sided line
+	{64,64,64},	// two-sided line
 	{0,0,0},
 	{0,0,0},
 	{0,0,0},
@@ -354,6 +386,39 @@ void writelzw( uint8_t *data, int siz, int bits, FILE *f )
 	drainlzw(f,buffer,1);
 }
 
+void writeframe( int side, int prev, FILE *gif )
+{
+	int delay = (side!=-1)?2:3000;
+	uint8_t gce[] =
+	{
+		0x21,0xf9,0x04,0x05,
+		delay&0xff,delay>>8,
+		0x00,0x00,
+	};
+	fwrite(gce,sizeof(gce),1,gif);
+	/* calculate bounds */
+	int x, y, w, h;
+	getsidebounds(side,prev,&x,&y,&w,&h);
+	bx = x;
+	by = y;
+	bpitch = w;
+	uint8_t ihead[] =
+	{
+		0x2c,
+		x&0xff,x>>8,
+		y&0xff,y>>8,
+		w&0xff,w>>8,
+		h&0xff,h>>8,
+		0x00,
+	};
+	fwrite(ihead,sizeof(ihead),1,gif);
+	/* render */
+	memset(b,0,w*h);
+	drawside(side,prev);
+	/* write frame */
+	writelzw(b,w*h,3,gif);
+}
+
 void mkanim( int imgw )
 {
 	/* calculate bounds, adjust scaling */
@@ -430,39 +495,21 @@ void mkanim( int imgw )
 	};
 	fwrite(ihead,sizeof(ihead),1,gif);
 	writelzw(b,imgw*imgh,3,gif);
-	for ( int i=0; i<=nsides; i++ )
+	int k = 0;
+	int prev = -1;
+	for ( int i=0; i<nsectors; i++ )
 	{
-		printf("\rwriting frame %d of %d",i,nsides);
-		int delay = (i<nsides)?2:3000;
-		uint8_t gce[] =
+		for ( int j=0; j<sectors[i].ns; j++ )
 		{
-			0x21,0xf9,0x04,0x05,
-			delay&0xff,delay>>8,
-			0x00,0x00,
-		};
-		fwrite(gce,sizeof(gce),1,gif);
-		/* calculate bounds */
-		int x, y, w, h;
-		getsidebounds(i,&x,&y,&w,&h);
-		bx = x;
-		by = y;
-		bpitch = w;
-		uint8_t ihead[] =
-		{
-			0x2c,
-			x&0xff,x>>8,
-			y&0xff,y>>8,
-			w&0xff,w>>8,
-			h&0xff,h>>8,
-			0x00,
-		};
-		fwrite(ihead,sizeof(ihead),1,gif);
-		/* render */
-		memset(b,0,w*h);
-		drawside(i);
-		/* write frame */
-		writelzw(b,w*h,3,gif);
+			printf("\r progress: %d / %d",k,nsides);
+			k++;
+			if ( lines[sides[sectors[i].s[j]].l].done ) continue;
+			writeframe(sectors[i].s[j],prev,gif);
+			prev = sectors[i].s[j];
+		}
 	}
+	printf("\r progress: %d / %d",k,nsides);
+	writeframe(-1,prev,gif);
 	free(b);
 	putchar('\n');
 	fputc(0x3b,gif);
@@ -489,6 +536,12 @@ void process_startblock( char *blk )
 		if ( !sides ) sides = malloc(sizeof(side_t));
 		else sides = realloc(sides,sizeof(side_t)*(nsides+1));
 		memset(sides+nsides,0,sizeof(side_t));
+	}
+	else if ( !strcasecmp(blk,"sector") )
+	{
+		if ( !sectors ) sectors = malloc(sizeof(sector_t));
+		else sectors = realloc(sectors,sizeof(sector_t)*(nsectors+1));
+		memset(sectors+nsectors,0,sizeof(sector_t));
 	}
 }
 
@@ -527,17 +580,13 @@ void process_assignment( char *blk, char *id, char *val )
 void process_endblock( char *blk )
 {
 	if ( !strcasecmp(blk,"vertex") )
-	{
 		nverts++;
-	}
 	else if ( !strcasecmp(blk,"linedef") )
-	{
 		nlines++;
-	}
 	else if ( !strcasecmp(blk,"sidedef") )
-	{
 		nsides++;
-	}
+	else if ( !strcasecmp(blk,"sector") )
+		nsectors++;
 }
 
 int main( int argc, char **argv )
@@ -629,16 +678,27 @@ int main( int argc, char **argv )
 		sides[lines[i].fs].v1 = lines[i].v1;
 		sides[lines[i].fs].v2 = lines[i].v2;
 		sides[lines[i].fs].type = lines[i].type;
+		sides[lines[i].fs].l = i;
 		if ( lines[i].bs != -1 )
 		{
 			sides[lines[i].bs].v1 = lines[i].v2;
 			sides[lines[i].bs].v2 = lines[i].v1;
 			sides[lines[i].bs].type = lines[i].type;
+			sides[lines[i].bs].l = i;
 		}
 	}
-	/* sort sides */
-	qsort(sides,nsides,sizeof(side_t),cmp_sides_by_vertex);
-	qsort(sides,nsides,sizeof(side_t),cmp_sides_by_sector);
+	/* populate sectors */
+	for ( int i=0; i<nsides; i++ )
+	{
+		int s = sides[i].s;
+		if ( !sectors[s].s ) sectors[s].s = malloc(sizeof(int));
+		else sectors[s].s = realloc(sectors[s].s,sizeof(int)
+			*(sectors[s].ns+1));
+		sectors[s].s[sectors[s].ns++] = i;
+	}
+	/* sort sides on each sector */
+	for ( int i=0; i<nsectors; i++ ) sort_sector(sectors+i);
+	/* TODO sort sectors based on shared vertices */
 	/* do the animation! */
 	int iw = 1024;
 	if ( argc > 2 ) sscanf(argv[2],"%d",&iw);
@@ -646,5 +706,12 @@ int main( int argc, char **argv )
 	if ( verts ) free(verts);
 	if ( lines ) free(lines);
 	if ( sides ) free(sides);
+	if ( sectors )
+	{
+		for ( int i=0; i<nsectors; i++ )
+			if ( sectors[i].s )
+				free(sectors[i].s);
+		free(sectors);
+	}
 	return 0;
 }
