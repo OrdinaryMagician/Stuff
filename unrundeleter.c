@@ -10,9 +10,6 @@
 
 #define UPKG_MAGIC 0x9E2A83C1
 
-// uncomment if you want full data dumps, helpful if you need to reverse engineer some unsupported format
-//#define _DEBUG 1
-
 typedef struct
 {
 	uint32_t magic;
@@ -149,7 +146,7 @@ int32_t readimport( void )
 {
 	readindex();
 	readindex();
-	if ( head->pkgver >= 55 ) fpos += 4;
+	if ( head->pkgver >= 60 ) fpos += 4;
 	else readindex();
 	return readindex();
 }
@@ -170,7 +167,7 @@ void readimport2( int32_t *cpkg, int32_t *cname, int32_t *pkg, int32_t *name )
 {
 	*cpkg = readindex();
 	*cname = readindex();
-	if ( head->pkgver >= 55 ) *pkg = readdword();
+	if ( head->pkgver >= 60 ) *pkg = readdword();
 	else *pkg = readindex();
 	*name = readindex();
 }
@@ -190,7 +187,7 @@ void readexport( int32_t *class, int32_t *ofs, int32_t *siz, int32_t *name )
 {
 	*class = readindex();
 	readindex();
-	if ( head->pkgver >= 55 ) fpos += 4;
+	if ( head->pkgver >= 60 ) fpos += 4;
 	*name = readindex();
 	fpos += 4;
 	*siz = readindex();
@@ -213,7 +210,7 @@ void readexport2( int32_t *class, int32_t *super, int32_t *pkg, int32_t *name,
 {
 	*class = readindex();
 	*super = readindex();
-	if ( head->pkgver >= 55 ) *pkg = readdword();
+	if ( head->pkgver >= 60 ) *pkg = readdword();
 	else *pkg = readindex();
 	*name = readindex();
 	*flags = readdword();
@@ -231,123 +228,14 @@ void getexport2( int index, int32_t *class, int32_t *super, int32_t *pkg,
 	fpos = prev;
 }
 
-// construct full name for object
-// shamelessly recycled from my old upackage project
-void imprefix( FILE *f, int32_t i );
-void exprefix( FILE *f, int32_t i );
-void imprefix( FILE *f, int32_t i )
-{
-	int32_t cpkg, cnam, pkg, nam;
-	getimport2(i,&cpkg,&cnam,&pkg,&nam);
-	if ( pkg < 0 ) imprefix(f,-pkg-1);
-	else if ( pkg > 0 ) exprefix(f,pkg-1);
-	if ( pkg ) fprintf(f,".");
-	int32_t l;
-	char *pname = (char*)(pkgfile+getname(nam,&l));
-	fprintf(f,"%.*s",l,pname);
-}
-void exprefix( FILE *f, int32_t i )
-{
-	int32_t cls, sup, pkg, nam, siz, ofs;
-	uint32_t fl;
-	getexport2(i,&cls,&sup,&pkg,&nam,&fl,&siz,&ofs);
-	if ( pkg > 0 )
-	{
-		exprefix(f,pkg-1);
-		fprintf(f,".");
-	}
-	int32_t l;
-	char *pname = (char*)(pkgfile+getname(nam,&l));
-	fprintf(f,"%.*s",l,pname);
-}
-void construct_fullname( FILE *f, int32_t i )
-{
-	if ( i > 0 ) exprefix(f,i-1);
-	else if ( i < 0 ) imprefix(f,-i-1);
-	else fprintf(f,"None");
-}
-
-typedef struct
-{
-	int32_t x, y, w, h;
-} ufontchar_t;
-
-typedef struct
-{
-	int32_t texture;
-	uint32_t charcount;
-	ufontchar_t *chars;
-} ufonttex_t;
-
-typedef struct
-{
-	uint32_t texcount;
-	ufonttex_t *tex;
-} ufonthdr_t;
-
-void savefont( int32_t namelen, char *name )
-{
-	char fname[256] = {0};
-	FILE *f;
-	if ( head->license == 2 )
-	{
-		printf(" FAIL: Postal 2 fonts not yet supported\n");
-		return;
-	}
-	ufonthdr_t fhead;
-	memset(&fhead,0,sizeof(ufonthdr_t));
-	fhead.texcount = readindex();
-	fhead.tex = calloc(fhead.texcount,sizeof(ufonttex_t));
-	uint32_t tchars = 0;
-	for ( int i=0; i<fhead.texcount; i++ )
-	{
-		fhead.tex[i].texture = readindex();
-		fhead.tex[i].charcount = readindex();
-		tchars += fhead.tex[i].charcount;
-		fhead.tex[i].chars = calloc(fhead.tex[i].charcount,
-			sizeof(ufontchar_t));
-		for ( int j=0; j<fhead.tex[i].charcount; j++ )
-		{
-			fhead.tex[i].chars[j].x = readdword();
-			fhead.tex[i].chars[j].y = readdword();
-			fhead.tex[i].chars[j].w = readdword();
-			fhead.tex[i].chars[j].h = readdword();
-		}
-	}
-	// save to text
-	snprintf(fname,256,"%.*s.txt",namelen,name);
-	f = fopen(fname,"w");
-	printf(" Dumping Font to %s\n",fname);
-	int cc = 0;
-	for ( int i=0; i<fhead.texcount; i++ )
-	for ( int j=0; j<fhead.tex[i].charcount; j++ )
-	{
-		if ( tchars > 256 ) fprintf(f,"0x%04x: ",cc);
-		else fprintf(f,"0x%02x: ",cc);
-		construct_fullname(f,fhead.tex[i].texture);
-		fprintf(f," (%d,%d)-(%d,%d)\n",fhead.tex[i].chars[j].x,
-			fhead.tex[i].chars[j].y,fhead.tex[i].chars[j].w,
-			fhead.tex[i].chars[j].h);
-		cc++;
-	}
-	fclose(f);
-	/*
-	   TODO also fetch the textures referenced and extract the characters
-	   from them into a folder (removing the need to use mkfont)
-	*/
-	// cleanup
-	for ( int i=0; i<fhead.texcount; i++ ) free(fhead.tex[i].chars);
-	free(fhead.tex);
-}
-
 int main( int argc, char **argv )
 {
 	if ( argc < 2 )
 	{
-		printf("Usage: ufontext <archive>\n");
+		printf("Usage: unrundeleter <map file>\n");
 		return 1;
 	}
-	int fd = open(argv[1],O_RDONLY);
+	int fd = open(argv[1],O_RDWR);
 	if ( fd == -1 )
 	{
 		printf("Failed to open file %s: %s\n",argv[1],strerror(errno));
@@ -381,43 +269,31 @@ int main( int argc, char **argv )
 		free(pkgfile);
 		return 2;
 	}
-	if ( !hasname("Font") )
+	if ( !hasname("bDeleteMe") )
 	{
-		printf("Package %s does not contain Fonts\n",argv[1]);
+		printf("Package %s does not contain deleted exports\n",argv[1]);
 		free(pkgfile);
 		return 4;
 	}
-	// loop through exports and search for fonts
+	// loop through exports and search for bDeleteMe properties
 	fpos = head->oexports;
 	for ( uint32_t i=0; i<head->nexports; i++ )
 	{
 		int32_t class, ofs, siz, name;
 		readexport(&class,&ofs,&siz,&name);
 		if ( (siz <= 0) || (class >= 0) ) continue;
-		// get the class name
+		// check the class
 		class = -class-1;
 		if ( (uint32_t)class > head->nimports ) continue;
+		// read name
 		int32_t l = 0;
-		char *n = (char*)(pkgfile+getname(getimport(class),&l));
-		if ( strncmp(n,"Font",l) ) continue;
-		char *fnt = (char*)(pkgfile+getname(name,&l));
-		printf("Font found: %.*s\n",l,fnt);
-		int32_t fntl = l;
-#ifdef _DEBUG
-		char fname[256] = {0};
-		snprintf(fname,256,"%.*s.object",fntl,fnt);
-		printf(" Dumping full object data to %s\n",fname);
-		FILE *f = fopen(fname,"wb");
-		fwrite(pkgfile+ofs,siz,1,f);
-		fclose(f);
-#endif
+		char *ename = (char*)(pkgfile+getname(name,&l));
+		printf("checking %.*s\n",l,ename);
 		// begin reading data
 		size_t prev = fpos;
 		fpos = ofs;
-		if ( head->pkgver < 45 ) fpos += 4;
-		if ( head->pkgver < 55 ) fpos += 16;
-		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
-		if ( head->pkgver <= 35 ) fpos += 8;	// ???
+		if ( head->pkgver < 40 ) fpos += 8;
+		if ( head->pkgver < 60 ) fpos += 16;
 		int32_t prop = readindex();
 		if ( (uint32_t)prop >= head->nnames )
 		{
@@ -430,9 +306,9 @@ retry:
 		if ( strncasecmp(pname,"none",l) )
 		{
 			uint8_t info = readbyte();
-			int array = info&0x80;
-			int type = info&0xf;
+			int ptype = info&0xf;
 			int psiz = (info>>4)&0x7;
+			int parr = (info>>7)&0x1;
 			switch ( psiz )
 			{
 			case 0:
@@ -460,27 +336,26 @@ retry:
 				psiz = readdword();
 				break;
 			}
-			if ( array && (type != 3) )
-				readindex();
-			if ( type == 10 )
-				readindex();	// skip struct name
 			fpos += psiz;
-			printf(" Skipping property %.*s\n",l,pname);
+			printf(" %zu: Skipping property %.*s of size %d and type %d (%d)\n",fpos,l,pname,psiz,ptype,parr);
+			if ( (ptype != 3) && parr )
+			{
+				printf("%d\n",readbyte());
+				return 1;
+			}
 			prop = readindex();
+			printf("prop: %d\n",prop);
 			pname = (char*)(pkgfile+getname(prop,&l));
+			// TODO figure out how the fuck structs and arrays actually are structured
+			// because the documentation for this is illegible
+			if ( ptype == 10 )
+			{
+
+			}
 			goto retry;
 		}
-#ifdef _DEBUG
-		snprintf(fname,256,"%.*s.ufnt",fntl,fnt);
-		printf(" Dumping full font struct to %s\n",fname);
-		f = fopen(fname,"wb");
-		fwrite(pkgfile+fpos,siz-(fpos-ofs),1,f);
-		fclose(f);
-#endif
-		savefont(fntl,fnt);
 		fpos = prev;
 	}
 	free(pkgfile);
 	return 0;
 }
-

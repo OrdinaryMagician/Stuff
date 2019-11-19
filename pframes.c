@@ -19,7 +19,7 @@ int main( int argc, char **argv )
 		printf("\tFrameIndex %.4s %c 0 %d\n",s,f,fi);
 		fi+=sk;
 		f++;
-		if ( f > 'Z' )
+		if ( f > ']' )
 		{
 			sp++;
 			if ( sp == 2 )

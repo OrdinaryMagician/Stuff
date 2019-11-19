@@ -266,6 +266,10 @@ int main( int argc, char **argv )
 	if ( head.caps[1]&DDSCAPS2_CUBEMAP_POSITIVEZ ) printf(" POSITIVEZ");
 	if ( head.caps[1]&DDSCAPS2_CUBEMAP_NEGATIVEZ ) printf(" NEGATIVEZ");
 	if ( head.caps[1]&DDSCAPS2_VOLUME ) printf(" VOLUME");
+	if ( !strncmp(head.pf_fourcc,"DX10",4) )
+	{
+		printf("\ndxgi format: %d",head10.dxgiformat);
+	}
 	printf("\n");
 	return 0;
 }

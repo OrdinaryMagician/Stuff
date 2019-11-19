@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <png.h>
 
 #define UPKG_MAGIC 0x9E2A83C1
 
@@ -231,120 +232,207 @@ void getexport2( int index, int32_t *class, int32_t *super, int32_t *pkg,
 	fpos = prev;
 }
 
-// construct full name for object
-// shamelessly recycled from my old upackage project
-void imprefix( FILE *f, int32_t i );
-void exprefix( FILE *f, int32_t i );
-void imprefix( FILE *f, int32_t i )
+int writepng( const char *filename, unsigned char *fdata, int fw, int fh,
+	png_color *fpal, int fpalsiz, int masked )
 {
-	int32_t cpkg, cnam, pkg, nam;
-	getimport2(i,&cpkg,&cnam,&pkg,&nam);
-	if ( pkg < 0 ) imprefix(f,-pkg-1);
-	else if ( pkg > 0 ) exprefix(f,pkg-1);
-	if ( pkg ) fprintf(f,".");
-	int32_t l;
-	char *pname = (char*)(pkgfile+getname(nam,&l));
-	fprintf(f,"%.*s",l,pname);
-}
-void exprefix( FILE *f, int32_t i )
-{
-	int32_t cls, sup, pkg, nam, siz, ofs;
-	uint32_t fl;
-	getexport2(i,&cls,&sup,&pkg,&nam,&fl,&siz,&ofs);
-	if ( pkg > 0 )
+	if ( !filename ) return 0;
+	png_structp pngp;
+	png_infop infp;
+	FILE *pf;
+	if ( !(pf = fopen(filename,"wb")) ) return 0;
+	pngp = png_create_write_struct(PNG_LIBPNG_VER_STRING,0,0,0);
+	if ( !pngp )
 	{
-		exprefix(f,pkg-1);
-		fprintf(f,".");
+		fclose(pf);
+		return 0;
 	}
-	int32_t l;
-	char *pname = (char*)(pkgfile+getname(nam,&l));
-	fprintf(f,"%.*s",l,pname);
-}
-void construct_fullname( FILE *f, int32_t i )
-{
-	if ( i > 0 ) exprefix(f,i-1);
-	else if ( i < 0 ) imprefix(f,-i-1);
-	else fprintf(f,"None");
-}
-
-typedef struct
-{
-	int32_t x, y, w, h;
-} ufontchar_t;
-
-typedef struct
-{
-	int32_t texture;
-	uint32_t charcount;
-	ufontchar_t *chars;
-} ufonttex_t;
-
-typedef struct
-{
-	uint32_t texcount;
-	ufonttex_t *tex;
-} ufonthdr_t;
-
-void savefont( int32_t namelen, char *name )
-{
-	char fname[256] = {0};
-	FILE *f;
-	if ( head->license == 2 )
+	infp = png_create_info_struct(pngp);
+	if ( !infp )
 	{
-		printf(" FAIL: Postal 2 fonts not yet supported\n");
+		fclose(pf);
+		png_destroy_write_struct(&pngp,0);
+		return 0;
+	}
+	if ( setjmp(png_jmpbuf(pngp)) )
+	{
+		png_destroy_write_struct(&pngp,&infp);
+		fclose(pf);
+		return 0;
+	}
+	png_init_io(pngp,pf);
+	if ( fpal )
+	{
+		png_set_IHDR(pngp,infp,fw,fh,8,PNG_COLOR_TYPE_PALETTE,
+			PNG_INTERLACE_NONE,PNG_COMPRESSION_TYPE_DEFAULT,
+			PNG_FILTER_TYPE_DEFAULT);
+		png_set_PLTE(pngp,infp,fpal,fpalsiz);
+		if ( masked )
+		{
+			unsigned char t = 0;
+			png_set_tRNS(pngp,infp,&t,1,0);
+		}
+		png_write_info(pngp,infp);
+		for ( int i=0; i<fh; i++ ) png_write_row(pngp,fdata+(fw*i));
+	}
+	else
+	{
+		png_set_IHDR(pngp,infp,fw,fh,8,PNG_COLOR_TYPE_RGB,
+			PNG_INTERLACE_NONE,PNG_COMPRESSION_TYPE_DEFAULT,
+			PNG_FILTER_TYPE_DEFAULT);
+		png_write_info(pngp,infp);
+		for ( int i=0; i<fh; i++ ) png_write_row(pngp,fdata+(fw*3*i));
+	}
+	png_write_end(pngp,infp);
+	png_destroy_write_struct(&pngp,&infp);
+	fclose(pf);
+	return 1;
+}
+
+typedef struct
+{
+	uint8_t r, g, b, x;
+} __attribute__((packed)) color_t;
+
+void readpalette( uint32_t pal, int32_t *num, color_t **col )
+{
+	size_t prev = fpos;
+	fpos = head->oexports;
+	for ( uint32_t i=0; i<head->nexports; i++ )
+	{
+		int32_t class, ofs, siz, name;
+		readexport(&class,&ofs,&siz,&name);
+		if ( i != pal-1 ) continue;
+		int32_t l = 0;
+		char *n = (char*)(pkgfile+getname(name,&l));
+		// begin reading data
+		fpos = ofs;
+		if ( head->pkgver < 45 ) fpos += 4;
+		if ( head->pkgver < 55 ) fpos += 16;
+		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
+		if ( head->pkgver <= 35 ) fpos += 8;	// ???
+		// process properties
+		int32_t prop = readindex();
+		if ( (uint32_t)prop >= head->nnames )
+		{
+			printf("Unknown property %d, skipping\n",prop);
+			fpos = prev;
+			return;
+		}
+		char *pname = (char*)(pkgfile+getname(prop,&l));
+retrypal:
+		if ( strncasecmp(pname,"none",l) )
+		{
+			uint8_t info = readbyte();
+			int array = info&0x80;
+			int type = info&0xf;
+			int psiz = (info>>4)&0x7;
+			switch ( psiz )
+			{
+			case 0:
+				psiz = 1;
+				break;
+			case 1:
+				psiz = 2;
+				break;
+			case 2:
+				psiz = 4;
+				break;
+			case 3:
+				psiz = 12;
+				break;
+			case 4:
+				psiz = 16;
+				break;
+			case 5:
+				psiz = readbyte();
+				break;
+			case 6:
+				psiz = readword();
+				break;
+			case 7:
+				psiz = readdword();
+				break;
+			}
+			if ( type == 10 )
+				readindex();	// skip struct name
+			fpos += psiz;
+			prop = readindex();
+			pname = (char*)(pkgfile+getname(prop,&l));
+			goto retrypal;
+		}
+		if ( (head->pkgver <= 56) )
+		{
+			// group?
+			fpos++;
+			readindex();
+		}
+		*num = readindex();
+		printf(" palette: %u colors\n",*num);
+		*col = calloc(sizeof(color_t),*num);
+		memcpy(*col,pkgfile+fpos,*num*sizeof(color_t));
+		fpos = prev;
 		return;
 	}
-	ufonthdr_t fhead;
-	memset(&fhead,0,sizeof(ufonthdr_t));
-	fhead.texcount = readindex();
-	fhead.tex = calloc(fhead.texcount,sizeof(ufonttex_t));
-	uint32_t tchars = 0;
-	for ( int i=0; i<fhead.texcount; i++ )
+	fpos = prev;
+}
+
+void savetexture( int32_t namelen, char *name, int32_t pal, int masked,
+	int version )
+{
+	uint32_t ncolors = 256;
+	color_t *paldata = 0;
+	readpalette(pal,&ncolors,&paldata);
+	if ( version <= 56 )
 	{
-		fhead.tex[i].texture = readindex();
-		fhead.tex[i].charcount = readindex();
-		tchars += fhead.tex[i].charcount;
-		fhead.tex[i].chars = calloc(fhead.tex[i].charcount,
-			sizeof(ufontchar_t));
-		for ( int j=0; j<fhead.tex[i].charcount; j++ )
+		// group?
+		fpos++;
+		readindex();
+	}
+	uint32_t mipcnt = readbyte();
+	printf(" %u mips\n",mipcnt);
+	uint32_t ofs = 0;
+	if ( version >= 63 ) ofs = readdword();
+	uint32_t datasiz = readindex();
+	printf(" %u size\n",datasiz);
+	uint8_t *imgdata = malloc(datasiz);
+	memcpy(imgdata,pkgfile+fpos,datasiz);
+	imgdata = malloc(datasiz);
+	memcpy(imgdata,pkgfile+fpos,datasiz);
+	if ( version >= 63 ) fpos = ofs;
+	else fpos += datasiz;
+	uint32_t w = readdword();
+	uint32_t h = readdword();
+	png_color fpal[256] = {{0}};
+	if ( !paldata || (ncolors <= 0) )
+	{
+		ncolors = 256;
+		// generate dummy palette
+		for ( int i=0; i<256; i++ )
 		{
-			fhead.tex[i].chars[j].x = readdword();
-			fhead.tex[i].chars[j].y = readdword();
-			fhead.tex[i].chars[j].w = readdword();
-			fhead.tex[i].chars[j].h = readdword();
+			fpal[i].red = i;
+			fpal[i].green = i;
+			fpal[i].blue = i;
 		}
 	}
-	// save to text
-	snprintf(fname,256,"%.*s.txt",namelen,name);
-	f = fopen(fname,"w");
-	printf(" Dumping Font to %s\n",fname);
-	int cc = 0;
-	for ( int i=0; i<fhead.texcount; i++ )
-	for ( int j=0; j<fhead.tex[i].charcount; j++ )
+	else
 	{
-		if ( tchars > 256 ) fprintf(f,"0x%04x: ",cc);
-		else fprintf(f,"0x%02x: ",cc);
-		construct_fullname(f,fhead.tex[i].texture);
-		fprintf(f," (%d,%d)-(%d,%d)\n",fhead.tex[i].chars[j].x,
-			fhead.tex[i].chars[j].y,fhead.tex[i].chars[j].w,
-			fhead.tex[i].chars[j].h);
-		cc++;
+		for ( int i=0; i<ncolors; i++ )
+		{
+			fpal[i].red = paldata[i].r;
+			fpal[i].green = paldata[i].g;
+			fpal[i].blue = paldata[i].b;
+		}
 	}
-	fclose(f);
-	/*
-	   TODO also fetch the textures referenced and extract the characters
-	   from them into a folder (removing the need to use mkfont)
-	*/
-	// cleanup
-	for ( int i=0; i<fhead.texcount; i++ ) free(fhead.tex[i].chars);
-	free(fhead.tex);
+	char fname[256];
+	snprintf(fname,256,"%.*s.png",namelen,name);
+	writepng(fname,imgdata,w,h,fpal,ncolors,masked);
 }
 
 int main( int argc, char **argv )
 {
 	if ( argc < 2 )
 	{
-		printf("Usage: ufontext <archive>\n");
+		printf("Usage: utxextract <archive>\n");
 		return 1;
 	}
 	int fd = open(argv[1],O_RDONLY);
@@ -381,13 +469,7 @@ int main( int argc, char **argv )
 		free(pkgfile);
 		return 2;
 	}
-	if ( !hasname("Font") )
-	{
-		printf("Package %s does not contain Fonts\n",argv[1]);
-		free(pkgfile);
-		return 4;
-	}
-	// loop through exports and search for fonts
+	// loop through exports and search for textures
 	fpos = head->oexports;
 	for ( uint32_t i=0; i<head->nexports; i++ )
 	{
@@ -399,17 +481,19 @@ int main( int argc, char **argv )
 		if ( (uint32_t)class > head->nimports ) continue;
 		int32_t l = 0;
 		char *n = (char*)(pkgfile+getname(getimport(class),&l));
-		if ( strncmp(n,"Font",l) ) continue;
-		char *fnt = (char*)(pkgfile+getname(name,&l));
-		printf("Font found: %.*s\n",l,fnt);
-		int32_t fntl = l;
+		int istex = !strncasecmp(n,"Texture",l);
+		if ( !istex ) continue;
+		char *tex = (char*)(pkgfile+getname(name,&l));
+		printf("Texture found: %.*s\n",l,tex);
+		int32_t texl = l;
 #ifdef _DEBUG
 		char fname[256] = {0};
-		snprintf(fname,256,"%.*s.object",fntl,fnt);
+		snprintf(fname,256,"%.*s.object",texl,tex);
 		printf(" Dumping full object data to %s\n",fname);
 		FILE *f = fopen(fname,"wb");
 		fwrite(pkgfile+ofs,siz,1,f);
 		fclose(f);
+		continue;
 #endif
 		// begin reading data
 		size_t prev = fpos;
@@ -418,6 +502,7 @@ int main( int argc, char **argv )
 		if ( head->pkgver < 55 ) fpos += 16;
 		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
 		if ( head->pkgver <= 35 ) fpos += 8;	// ???
+		// process properties
 		int32_t prop = readindex();
 		if ( (uint32_t)prop >= head->nnames )
 		{
@@ -425,9 +510,11 @@ int main( int argc, char **argv )
 			fpos = prev;
 			continue;
 		}
+		int32_t pal = 0;	// we need to fetch this
 		char *pname = (char*)(pkgfile+getname(prop,&l));
+		int masked = 0;	// and this (which may not be available)
 retry:
-		if ( strncasecmp(pname,"none",l) )
+		if ( strncasecmp(pname,"None",l) )
 		{
 			uint8_t info = readbyte();
 			int array = info&0x80;
@@ -460,27 +547,35 @@ retry:
 				psiz = readdword();
 				break;
 			}
+			//printf(" prop %.*s (%u, %u, %u, %u)\n",l,pname,array,type,(info>>4)&7,psiz);
 			if ( array && (type != 3) )
-				readindex();
-			if ( type == 10 )
-				readindex();	// skip struct name
-			fpos += psiz;
-			printf(" Skipping property %.*s\n",l,pname);
+			{
+				int idx = readindex();
+				//printf(" index: %d\n",idx);
+			}
+			if ( !strncasecmp(pname,"Palette",l) )
+				pal = readindex();
+			if ( !strncasecmp(pname,"bMasked",l) )
+				masked = array;
+			else
+			{
+				if ( type == 10 )
+				{
+					int32_t tl, sn;
+					sn = readindex();
+					//char *sname = (char*)(pkgfile+getname(sn,&tl));
+					//printf(" struct: %.*s\n",tl,sname);
+				}
+				fpos += psiz;
+			}
 			prop = readindex();
 			pname = (char*)(pkgfile+getname(prop,&l));
 			goto retry;
 		}
-#ifdef _DEBUG
-		snprintf(fname,256,"%.*s.ufnt",fntl,fnt);
-		printf(" Dumping full font struct to %s\n",fname);
-		f = fopen(fname,"wb");
-		fwrite(pkgfile+fpos,siz-(fpos-ofs),1,f);
-		fclose(f);
-#endif
-		savefont(fntl,fnt);
+		if ( !pal ) continue;
+		savetexture(texl,tex,pal,masked,head->pkgver);
 		fpos = prev;
 	}
 	free(pkgfile);
 	return 0;
 }
-
