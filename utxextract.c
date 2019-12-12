@@ -215,7 +215,7 @@ void readexport2( int32_t *class, int32_t *super, int32_t *pkg, int32_t *name,
 	*class = readindex();
 	*super = readindex();
 	if ( head->pkgver >= 55 ) *pkg = readdword();
-	else *pkg = readindex();
+	else *pkg = 0;
 	*name = readindex();
 	*flags = readdword();
 	*siz = readindex();
@@ -296,104 +296,99 @@ typedef struct
 void readpalette( uint32_t pal, int32_t *num, color_t **col )
 {
 	size_t prev = fpos;
-	fpos = head->oexports;
-	for ( uint32_t i=0; i<head->nexports; i++ )
+	int32_t class, ofs, siz, name;
+	getexport(pal-1,&class,&ofs,&siz,&name);
+	int32_t l = 0;
+	char *n = (char*)(pkgfile+getname(name,&l));
+	// begin reading data
+	fpos = ofs;
+	if ( head->pkgver < 45 ) fpos += 4;
+	if ( head->pkgver < 55 ) fpos += 16;
+	if ( head->pkgver <= 44 ) fpos -= 6;	// ???
+	if ( head->pkgver == 45 ) fpos -= 2;	// ???
+	if ( head->pkgver <= 35 ) fpos += 8;	// ???
+	// process properties
+	int32_t prop = readindex();
+	if ( (uint32_t)prop >= head->nnames )
 	{
-		int32_t class, ofs, siz, name;
-		readexport(&class,&ofs,&siz,&name);
-		if ( i != pal-1 ) continue;
-		int32_t l = 0;
-		char *n = (char*)(pkgfile+getname(name,&l));
-		// begin reading data
-		fpos = ofs;
-		if ( head->pkgver < 45 ) fpos += 4;
-		if ( head->pkgver < 55 ) fpos += 16;
-		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
-		if ( head->pkgver <= 35 ) fpos += 8;	// ???
-		// process properties
-		int32_t prop = readindex();
-		if ( (uint32_t)prop >= head->nnames )
-		{
-			printf("Unknown property %d, skipping\n",prop);
-			fpos = prev;
-			return;
-		}
-		char *pname = (char*)(pkgfile+getname(prop,&l));
-retrypal:
-		if ( strncasecmp(pname,"none",l) )
-		{
-			uint8_t info = readbyte();
-			int array = info&0x80;
-			int type = info&0xf;
-			int psiz = (info>>4)&0x7;
-			switch ( psiz )
-			{
-			case 0:
-				psiz = 1;
-				break;
-			case 1:
-				psiz = 2;
-				break;
-			case 2:
-				psiz = 4;
-				break;
-			case 3:
-				psiz = 12;
-				break;
-			case 4:
-				psiz = 16;
-				break;
-			case 5:
-				psiz = readbyte();
-				break;
-			case 6:
-				psiz = readword();
-				break;
-			case 7:
-				psiz = readdword();
-				break;
-			}
-			if ( type == 10 )
-				readindex();	// skip struct name
-			fpos += psiz;
-			prop = readindex();
-			pname = (char*)(pkgfile+getname(prop,&l));
-			goto retrypal;
-		}
-		if ( (head->pkgver <= 56) )
-		{
-			// group?
-			fpos++;
-			readindex();
-		}
-		*num = readindex();
-		printf(" palette: %u colors\n",*num);
-		*col = calloc(sizeof(color_t),*num);
-		memcpy(*col,pkgfile+fpos,*num*sizeof(color_t));
+		printf("Unknown property %d, skipping\n",prop);
 		fpos = prev;
 		return;
 	}
+	char *pname = (char*)(pkgfile+getname(prop,&l));
+retrypal:
+	if ( strncasecmp(pname,"none",l) )
+	{
+		uint8_t info = readbyte();
+		int array = info&0x80;
+		int type = info&0xf;
+		int psiz = (info>>4)&0x7;
+		switch ( psiz )
+		{
+		case 0:
+			psiz = 1;
+			break;
+		case 1:
+			psiz = 2;
+			break;
+		case 2:
+			psiz = 4;
+			break;
+		case 3:
+			psiz = 12;
+			break;
+		case 4:
+			psiz = 16;
+			break;
+		case 5:
+			psiz = readbyte();
+			break;
+		case 6:
+			psiz = readword();
+			break;
+		case 7:
+			psiz = readdword();
+			break;
+		}
+		if ( type == 10 )
+			readindex();	// skip struct name
+		fpos += psiz;
+		prop = readindex();
+		pname = (char*)(pkgfile+getname(prop,&l));
+		goto retrypal;
+	}
+	if ( head->pkgver < 55 )
+	{
+		// group
+		fpos++;
+		readindex();
+	}
+	*num = readindex();
+	//printf(" palette: %u colors\n",*num);
+	*col = calloc(sizeof(color_t),*num);
+	memcpy(*col,pkgfile+fpos,*num*sizeof(color_t));
 	fpos = prev;
 }
 
 void savetexture( int32_t namelen, char *name, int32_t pal, int masked,
-	int version )
+	int version, int32_t grouplen, char *group )
 {
 	uint32_t ncolors = 256;
 	color_t *paldata = 0;
 	readpalette(pal,&ncolors,&paldata);
-	if ( version <= 56 )
+	if ( version < 55 )
 	{
-		// group?
+		// group
 		fpos++;
-		readindex();
+		int32_t grp = readindex();
+		group = (char*)(pkgfile+getname(grp,&grouplen));
 	}
 	uint32_t mipcnt = readbyte();
-	printf(" %u mips\n",mipcnt);
+	//printf(" %u mips\n",mipcnt);
 	uint32_t ofs = 0;
 	if ( version >= 63 ) ofs = readdword();
 	uint32_t datasiz = readindex();
-	printf(" %u size\n",datasiz);
+	//printf(" %u size\n",datasiz);
 	uint8_t *imgdata = malloc(datasiz);
 	memcpy(imgdata,pkgfile+fpos,datasiz);
 	imgdata = malloc(datasiz);
@@ -424,7 +419,14 @@ void savetexture( int32_t namelen, char *name, int32_t pal, int masked,
 		}
 	}
 	char fname[256];
-	snprintf(fname,256,"%.*s.png",namelen,name);
+	if ( group && strncmp(group,"None",grouplen) )
+	{
+		snprintf(fname,256,"Textures/%.*s",grouplen,group);
+		mkdir(fname,0775);
+		snprintf(fname,256,"Textures/%.*s/%.*s.png",grouplen,group,
+			namelen,name);
+	}
+	else snprintf(fname,256,"Textures/%.*s.png",namelen,name);
 	writepng(fname,imgdata,w,h,fpal,ncolors,masked);
 }
 
@@ -473,8 +475,8 @@ int main( int argc, char **argv )
 	fpos = head->oexports;
 	for ( uint32_t i=0; i<head->nexports; i++ )
 	{
-		int32_t class, ofs, siz, name;
-		readexport(&class,&ofs,&siz,&name);
+		int32_t class, super, pkg, name, flags, siz, ofs;
+		readexport2(&class,&super,&pkg,&name,&flags,&siz,&ofs);
 		if ( (siz <= 0) || (class >= 0) ) continue;
 		// get the class name
 		class = -class-1;
@@ -483,8 +485,21 @@ int main( int argc, char **argv )
 		char *n = (char*)(pkgfile+getname(getimport(class),&l));
 		int istex = !strncasecmp(n,"Texture",l);
 		if ( !istex ) continue;
+		mkdir("Textures",0775);
+		// get the highest group name (must be an export)
+		char *pkgn = 0;
+		int32_t pkgl = 0;
+		while ( pkg > 0 )
+		{
+			int32_t pclass, psuper, ppkg, pname, pflags, psiz, pofs;
+			getexport2(pkg-1,&pclass,&psuper,&ppkg,&pname,&pflags,&psiz,&pofs);
+			pkgn = (char*)(pkgfile+getname(pname,&pkgl));
+			pkg = ppkg;
+		}
 		char *tex = (char*)(pkgfile+getname(name,&l));
-		printf("Texture found: %.*s\n",l,tex);
+		if ( pkgn && strncmp(pkgn,"None",pkgl) )
+			printf("Texture found: %.*s.%.*s\n",pkgl,pkgn,l,tex);
+		else printf("Texture found: %.*s\n",l,tex);
 		int32_t texl = l;
 #ifdef _DEBUG
 		char fname[256] = {0};
@@ -501,6 +516,7 @@ int main( int argc, char **argv )
 		if ( head->pkgver < 45 ) fpos += 4;
 		if ( head->pkgver < 55 ) fpos += 16;
 		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
+		if ( head->pkgver == 45 ) fpos -= 2;	// ???
 		if ( head->pkgver <= 35 ) fpos += 8;	// ???
 		// process properties
 		int32_t prop = readindex();
@@ -555,7 +571,7 @@ retry:
 			}
 			if ( !strncasecmp(pname,"Palette",l) )
 				pal = readindex();
-			if ( !strncasecmp(pname,"bMasked",l) )
+			else if ( !strncasecmp(pname,"bMasked",l) )
 				masked = array;
 			else
 			{
@@ -563,7 +579,7 @@ retry:
 				{
 					int32_t tl, sn;
 					sn = readindex();
-					//char *sname = (char*)(pkgfile+getname(sn,&tl));
+					char *sname = (char*)(pkgfile+getname(sn,&tl));
 					//printf(" struct: %.*s\n",tl,sname);
 				}
 				fpos += psiz;
@@ -572,8 +588,8 @@ retry:
 			pname = (char*)(pkgfile+getname(prop,&l));
 			goto retry;
 		}
-		if ( !pal ) continue;
-		savetexture(texl,tex,pal,masked,head->pkgver);
+		if ( pal )
+			savetexture(texl,tex,pal,masked,head->pkgver,pkgl,pkgn);
 		fpos = prev;
 	}
 	free(pkgfile);

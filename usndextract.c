@@ -171,7 +171,7 @@ void readimport2( int32_t *cpkg, int32_t *cname, int32_t *pkg, int32_t *name )
 	*cpkg = readindex();
 	*cname = readindex();
 	if ( head->pkgver >= 55 ) *pkg = readdword();
-	else *pkg = readindex();
+	else *pkg = 0;
 	*name = readindex();
 }
 
@@ -214,7 +214,7 @@ void readexport2( int32_t *class, int32_t *super, int32_t *pkg, int32_t *name,
 	*class = readindex();
 	*super = readindex();
 	if ( head->pkgver >= 55 ) *pkg = readdword();
-	else *pkg = readindex();
+	else *pkg = 0;
 	*name = readindex();
 	*flags = readdword();
 	*siz = readindex();
@@ -231,37 +231,31 @@ void getexport2( int index, int32_t *class, int32_t *super, int32_t *pkg,
 	fpos = prev;
 }
 
-void savesound( int32_t namelen, char *name, int version )
+void savesound( int32_t namelen, char *name, int version, int32_t grouplen, char *group )
 {
-	char fname[256] = {0};
 	int32_t fmt = readindex();	// not really needed, always assume wav
-	int32_t grp, grouplen;
-	char *group;
-	if ( version > 35 )
+					// in some versions it's the group, though
+	if ( version <= 35 )
 	{
-		// ????
-		readindex();
-		readindex();
-		grp = readindex();
-		grouplen = 0;
-		group = (char*)(pkgfile+getname(grp,&grouplen));
-		// ????
-		readindex();
-	}
-	else
-	{
-		grp = readindex();
-		grouplen = 0;
+		int32_t grp = readindex();
 		group = (char*)(pkgfile+getname(grp,&grouplen));
 		readindex();	// unknown
 	}
+	else if ( version < 55 )
+		group = (char*)(pkgfile+getname(fmt,&grouplen));
 	uint32_t ofsnext = 0;
 	if ( version >= 63 ) ofsnext = readdword();	// not needed but gotta read
 	// the actual important info starts now
 	int32_t sndsize = readindex();
 	char *snddata = (char*)(pkgfile+fpos);
-	if ( strncmp(group,"None",grouplen) ) snprintf(fname,256,"%.*s.%.*s.wav",grouplen,group,namelen,name);
-	else snprintf(fname,256,"%.*s.wav",namelen,name);
+	char fname[256];
+	if ( group && strncmp(group,"None",grouplen) )
+	{
+		snprintf(fname,256,"Sounds/%.*s",grouplen,group);
+		mkdir(fname,0775);
+		snprintf(fname,256,"Sounds/%.*s/%.*s.wav",grouplen,group,namelen,name);
+	}
+	else snprintf(fname,256,"Sounds/%.*s.wav",namelen,name);
 	FILE *f = fopen(fname,"wb");
 	fwrite(snddata,sndsize,1,f);
 	fclose(f);
@@ -318,8 +312,8 @@ int main( int argc, char **argv )
 	fpos = head->oexports;
 	for ( uint32_t i=0; i<head->nexports; i++ )
 	{
-		int32_t class, ofs, siz, name;
-		readexport(&class,&ofs,&siz,&name);
+		int32_t class, super, pkg, name, flags, siz, ofs;
+		readexport2(&class,&super,&pkg,&name,&flags,&siz,&ofs);
 		if ( (siz <= 0) || (class >= 0) ) continue;
 		// get the class name
 		class = -class-1;
@@ -328,8 +322,21 @@ int main( int argc, char **argv )
 		char *n = (char*)(pkgfile+getname(getimport(class),&l));
 		int ismesh = !strncmp(n,"Sound",l);
 		if ( !ismesh ) continue;
+		mkdir("Sounds",0775);
+		// get the highest group name (must be an export)
+		char *pkgn = 0;
+		int32_t pkgl = 0;
+		while ( pkg > 0 )
+		{
+			int32_t pclass, psuper, ppkg, pname, pflags, psiz, pofs;
+			getexport2(pkg-1,&pclass,&psuper,&ppkg,&pname,&pflags,&psiz,&pofs);
+			pkgn = (char*)(pkgfile+getname(pname,&pkgl));
+			pkg = ppkg;
+		}
 		char *snd = (char*)(pkgfile+getname(name,&l));
-		printf("Sound found: %.*s\n",l,snd);
+		if ( pkgn && strncmp(pkgn,"None",pkgl) )
+			printf("Sound found: %.*s.%.*s\n",pkgl,pkgn,l,snd);
+		else printf("Sound found: %.*s\n",l,snd);
 		int32_t sndl = l;
 #ifdef _DEBUG
 		char fname[256] = {0};
@@ -346,10 +353,8 @@ int main( int argc, char **argv )
 		if ( head->pkgver < 45 ) fpos += 4;
 		if ( head->pkgver < 55 ) fpos += 16;
 		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
+		if ( head->pkgver == 45 ) fpos -= 2;	// ???
 		if ( head->pkgver <= 35 ) fpos += 8;	// ???
-		// only very old packages have properties for sound classes
-		if ( head->pkgver > 35 )
-			goto noprop;
 		// process properties
 		int32_t prop = readindex();
 		if ( (uint32_t)prop >= head->nnames )
@@ -393,26 +398,25 @@ retry:
 				psiz = readdword();
 				break;
 			}
-			printf(" prop %.*s (%u, %u, %u, %u)\n",l,pname,array,type,(info>>4)&7,psiz);
+			//printf(" prop %.*s (%u, %u, %u, %u)\n",l,pname,array,type,(info>>4)&7,psiz);
 			if ( array && (type != 3) )
 			{
 				int idx = readindex();
-				printf(" index: %d\n",idx);
+				//printf(" index: %d\n",idx);
 			}
 			if ( type == 10 )
 			{
 				int32_t tl, sn;
 				sn = readindex();
 				char *sname = (char*)(pkgfile+getname(sn,&tl));
-				printf(" struct: %.*s\n",tl,sname);
+				//printf(" struct: %.*s\n",tl,sname);
 			}
 			fpos += psiz;
 			prop = readindex();
 			pname = (char*)(pkgfile+getname(prop,&l));
 			goto retry;
 		}
-noprop:
-		savesound(sndl,snd,head->pkgver);
+		savesound(sndl,snd,head->pkgver,pkgl,pkgn);
 		fpos = prev;
 	}
 	free(pkgfile);

@@ -130,7 +130,7 @@ int32_t readimport( void )
 {
 	readindex();
 	readindex();
-	if ( head->pkgver >= 60 ) fpos += 4;
+	if ( head->pkgver >= 55 ) fpos += 4;
 	else readindex();
 	return readindex();
 }
@@ -150,7 +150,7 @@ void readexport( int32_t *class, int32_t *ofs, int32_t *siz, int32_t *name )
 {
 	*class = readindex();
 	readindex();
-	if ( head->pkgver >= 60 ) fpos += 4;
+	if ( head->pkgver >= 55 ) fpos += 4;
 	*name = readindex();
 	fpos += 4;
 	*siz = readindex();
@@ -280,12 +280,72 @@ int main( int argc, char **argv )
 		// begin reading data
 		size_t prev = fpos;
 		fpos = ofs;
-		if ( head->pkgver < 40 ) fpos += 8;
-		if ( head->pkgver < 60 ) fpos += 16;
+		if ( head->pkgver < 45 ) fpos += 4;
+		if ( head->pkgver < 55 ) fpos += 16;
+		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
+		if ( head->pkgver == 45 ) fpos -= 2;	// ???
+		if ( head->pkgver <= 35 ) fpos += 8;	// ???
+		// process properties
 		int32_t prop = readindex();
-		if ( prop >= head->nnames ) continue;
+		if ( (uint32_t)prop >= head->nnames )
+		{
+			printf("Unknown property %d, skipping\n",prop);
+			fpos = prev;
+			continue;
+		}
 		char *pname = pkgfile+getname(prop,&l);
-		if ( strncasecmp(pname,"none",l) ) continue;
+retry:
+		if ( strncasecmp(pname,"None",l) )
+		{
+			uint8_t info = readbyte();
+			int array = info&0x80;
+			int type = info&0xf;
+			int psiz = (info>>4)&0x7;
+			switch ( psiz )
+			{
+			case 0:
+				psiz = 1;
+				break;
+			case 1:
+				psiz = 2;
+				break;
+			case 2:
+				psiz = 4;
+				break;
+			case 3:
+				psiz = 12;
+				break;
+			case 4:
+				psiz = 16;
+				break;
+			case 5:
+				psiz = readbyte();
+				break;
+			case 6:
+				psiz = readword();
+				break;
+			case 7:
+				psiz = readdword();
+				break;
+			}
+			//printf(" prop %.*s (%u, %u, %u, %u)\n",l,pname,array,type,(info>>4)&7,psiz);
+			if ( array && (type != 3) )
+			{
+				int idx = readindex();
+				//printf(" index: %d\n",idx);
+			}
+			if ( type == 10 )
+			{
+				int32_t tl, sn;
+				sn = readindex();
+				char *sname = (char*)(pkgfile+getname(sn,&tl));
+				//printf(" struct: %.*s\n",tl,sname);
+			}
+			fpos += psiz;
+			prop = readindex();
+			pname = (char*)(pkgfile+getname(prop,&l));
+			goto retry;
+		}
 		int32_t ext;
 		if ( head->pkgver >= 120 )
 		{

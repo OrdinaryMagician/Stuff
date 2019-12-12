@@ -4,6 +4,12 @@
 	final formats
 	fortunately this one is more third party tool friendly as you don't
 	need to know the structure of all object types to read the data
+
+	known issues:
+	 - SBase.utx from some versions (e.g. 0.874d) has some incongruencies
+	   in its internal texture struct that I have yet to reverse engineer.
+	   It's a feckin' mess, that's for sure. It's not even the same as
+	   other version 25 packages.
 */
 #include <stdio.h>
 #include <stdint.h>
@@ -376,7 +382,8 @@ int main( int argc, char **argv )
 		fread(&objects[i].class,2,1,f);
 		fread(&objects[i].flags,4,2,f);
 		if ( objects[i].headerofs != 0 ) fread(&objects[i].crc,4,4,f);
-		if ( !strcmp(names[objects[i].class-1].name,"Class") )
+		if ( (head.version >= 27)
+			&& !strcmp(names[objects[i].class-1].name,"Class") )
 			fseek(f,14,SEEK_CUR);	// haven't figured this out yet
 	}
 	/*for ( int i=0; i<head.nnames; i++ )
