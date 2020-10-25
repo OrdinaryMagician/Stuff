@@ -2,7 +2,7 @@
 	iwad64ex.c : Extracts the embedded IWAD in Hexen 64.
 	Currently does not decompress the data (or fix the endianness in data).
 	(C)2019 Marisa Kirisame, UnSX Team.
-	Released under the GNU General Public License version 3.
+	Released under the MIT license.
 */
 #include <stdio.h>
 #include <string.h>

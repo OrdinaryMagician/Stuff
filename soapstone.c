@@ -1,7 +1,7 @@
 /*
 	soapstone.c : Random orange soapstone message generator.
 	(C)2016 Marisa Kirisame, UnSX Team.
-	Released under the GNU GPLv3 (or later).
+	Released under the MIT license.
 	Dark Souls is (C)2011-2016 From Software.
 */
 #include <stdio.h>

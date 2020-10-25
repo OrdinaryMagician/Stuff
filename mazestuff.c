@@ -2,7 +2,7 @@
 	A C implementation of some dungeon generator, or at least an attempt.
 	Based mainly on http://journal.stuffwithstuff.com/2014/12/21/rooms-and-mazes
 	(C)2019 Marisa Kirisame, UnSX Team.
-	Released under the LGPLv3.
+	Released under the MIT license.
 */
 #include <stdlib.h>
 #include <stdint.h>

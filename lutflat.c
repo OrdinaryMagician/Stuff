@@ -2,7 +2,7 @@
 	lutflat.c : LUT flattener.
 	Converts DDS Volume Map LUTs back into flat textures.
 	(C)2017 Marisa Kirisame, UnSX Team.
-	Released under the GNU General Public License version 3 (or later).
+	Released under the MIT license.
 */
 #include <stdio.h>
 #include <stdlib.h>

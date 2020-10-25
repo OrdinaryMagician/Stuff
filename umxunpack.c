@@ -10,6 +10,9 @@
 
 #define UPKG_MAGIC 0x9E2A83C1
 
+// uncomment if you want full data dumps, helpful if you need to reverse engineer some unsupported format
+//#define _DEBUG 1
+
 typedef struct
 {
 	uint32_t magic;
@@ -27,6 +30,14 @@ uint8_t readbyte( void )
 	fpos++;
 	return val;
 }
+
+uint16_t readword( void )
+{
+	uint16_t val = *(uint16_t*)(pkgfile+fpos);
+	fpos += 2;
+	return val;
+}
+
 
 uint32_t readdword( void )
 {
@@ -277,6 +288,15 @@ int main( int argc, char **argv )
 		if ( strncmp(n,"Music",l) ) continue;
 		char *trk = pkgfile+getname(name,&l);
 		printf("Track found: %.*s\n",l,trk);
+#ifdef _DEBUG
+		char fname[256] = {0};
+		snprintf(fname,256,"%.*s.object",l,trk);
+		printf(" Dumping full object data to %s\n",fname);
+		FILE *f = fopen(fname,"wb");
+		fwrite(pkgfile+ofs,siz,1,f);
+		fclose(f);
+		continue;
+#endif
 		// begin reading data
 		size_t prev = fpos;
 		fpos = ofs;
@@ -284,6 +304,7 @@ int main( int argc, char **argv )
 		if ( head->pkgver < 55 ) fpos += 16;
 		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
 		if ( head->pkgver == 45 ) fpos -= 2;	// ???
+		if ( head->pkgver == 41 ) fpos += 2;	// ???
 		if ( head->pkgver <= 35 ) fpos += 8;	// ???
 		// process properties
 		int32_t prop = readindex();
@@ -293,7 +314,7 @@ int main( int argc, char **argv )
 			fpos = prev;
 			continue;
 		}
-		char *pname = pkgfile+getname(prop,&l);
+		char *pname = (char*)(pkgfile+getname(prop,&l));
 retry:
 		if ( strncasecmp(pname,"None",l) )
 		{
@@ -301,6 +322,14 @@ retry:
 			int array = info&0x80;
 			int type = info&0xf;
 			int psiz = (info>>4)&0x7;
+			int32_t tl = 0;
+			char *sname;
+			if ( type == 10 )
+			{
+				int32_t sn;
+				sn = readindex();
+				sname = (char*)(pkgfile+getname(sn,&tl));
+			}
 			switch ( psiz )
 			{
 			case 0:
@@ -329,6 +358,7 @@ retry:
 				break;
 			}
 			//printf(" prop %.*s (%u, %u, %u, %u)\n",l,pname,array,type,(info>>4)&7,psiz);
+			//if ( tl ) printf("  struct: %.*s\n",tl,sname);
 			if ( array && (type != 3) )
 			{
 				int idx = readindex();
@@ -346,7 +376,7 @@ retry:
 			pname = (char*)(pkgfile+getname(prop,&l));
 			goto retry;
 		}
-		int32_t ext;
+		int32_t ext, msize;
 		if ( head->pkgver >= 120 )
 		{
 			ext = readindex();
@@ -364,7 +394,7 @@ retry:
 			fpos += 4;
 		}
 		else ext = readindex();
-		int32_t msize = readindex();
+		msize = readindex();
 		savemusic(pkgfile+fpos,msize,name,ext);
 		fpos = prev;
 	}

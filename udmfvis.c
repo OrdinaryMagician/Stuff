@@ -1,7 +1,7 @@
 /*
 	UDMF map visualizer - Kinda like dmvis but for UDMF maps specifically.
 	(C)2018 Marisa Kirisame, UnSX Team.
-	Released under the GNU General Public License version 3 (or later).
+	Released under the MIT license.
 */
 #include <stdio.h>
 #include <stdlib.h>

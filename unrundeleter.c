@@ -146,7 +146,7 @@ int32_t readimport( void )
 {
 	readindex();
 	readindex();
-	if ( head->pkgver >= 60 ) fpos += 4;
+	if ( head->pkgver >= 55 ) fpos += 4;
 	else readindex();
 	return readindex();
 }
@@ -167,8 +167,8 @@ void readimport2( int32_t *cpkg, int32_t *cname, int32_t *pkg, int32_t *name )
 {
 	*cpkg = readindex();
 	*cname = readindex();
-	if ( head->pkgver >= 60 ) *pkg = readdword();
-	else *pkg = readindex();
+	if ( head->pkgver >= 55 ) *pkg = readdword();
+	else *pkg = 0;
 	*name = readindex();
 }
 
@@ -187,7 +187,7 @@ void readexport( int32_t *class, int32_t *ofs, int32_t *siz, int32_t *name )
 {
 	*class = readindex();
 	readindex();
-	if ( head->pkgver >= 60 ) fpos += 4;
+	if ( head->pkgver >= 55 ) fpos += 4;
 	*name = readindex();
 	fpos += 4;
 	*siz = readindex();
@@ -210,8 +210,8 @@ void readexport2( int32_t *class, int32_t *super, int32_t *pkg, int32_t *name,
 {
 	*class = readindex();
 	*super = readindex();
-	if ( head->pkgver >= 60 ) *pkg = readdword();
-	else *pkg = readindex();
+	if ( head->pkgver >= 55 ) *pkg = readdword();
+	else *pkg = 0;
 	*name = readindex();
 	*flags = readdword();
 	*siz = readindex();
@@ -261,7 +261,6 @@ int main( int argc, char **argv )
 		fpos += r;
 	}
 	while ( r > 0 );
-	close(fd);
 	fpos = 0;
 	if ( head->magic != UPKG_MAGIC )
 	{
@@ -279,8 +278,8 @@ int main( int argc, char **argv )
 	fpos = head->oexports;
 	for ( uint32_t i=0; i<head->nexports; i++ )
 	{
-		int32_t class, ofs, siz, name;
-		readexport(&class,&ofs,&siz,&name);
+		int32_t class, super, pkg, name, flags, siz, ofs;
+		readexport2(&class,&super,&pkg,&name,&flags,&siz,&ofs);
 		if ( (siz <= 0) || (class >= 0) ) continue;
 		// check the class
 		class = -class-1;
@@ -292,8 +291,23 @@ int main( int argc, char **argv )
 		// begin reading data
 		size_t prev = fpos;
 		fpos = ofs;
-		if ( head->pkgver < 40 ) fpos += 8;
-		if ( head->pkgver < 60 ) fpos += 16;
+		if ( head->pkgver < 45 ) fpos += 4;
+		if ( head->pkgver < 55 ) fpos += 16;
+		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
+		if ( head->pkgver == 45 ) fpos -= 2;	// ???
+		if ( head->pkgver == 41 ) fpos += 2;	// ???
+		if ( head->pkgver <= 35 ) fpos += 8;	// ???
+		// process stack
+		if ( flags&0x2000000 )
+		{
+			int32_t node = readindex();
+			readindex();
+			readdword();
+			readdword();
+			readdword();
+			if ( node != 0 ) readindex();
+		}
+		// process properties
 		int32_t prop = readindex();
 		if ( (uint32_t)prop >= head->nnames )
 		{
@@ -303,12 +317,21 @@ int main( int argc, char **argv )
 		}
 		char *pname = (char*)(pkgfile+getname(prop,&l));
 retry:
-		if ( strncasecmp(pname,"none",l) )
+		if ( strncasecmp(pname,"None",l) )
 		{
+			size_t ptr = fpos;
 			uint8_t info = readbyte();
-			int ptype = info&0xf;
+			int array = info&0x80;
+			int type = info&0xf;
 			int psiz = (info>>4)&0x7;
-			int parr = (info>>7)&0x1;
+			int32_t tl = 0;
+			char *sname;
+			if ( type == 10 )
+			{
+				int32_t sn;
+				sn = readindex();
+				sname = (char*)(pkgfile+getname(sn,&tl));
+			}
 			switch ( psiz )
 			{
 			case 0:
@@ -336,26 +359,29 @@ retry:
 				psiz = readdword();
 				break;
 			}
-			fpos += psiz;
-			printf(" %zu: Skipping property %.*s of size %d and type %d (%d)\n",fpos,l,pname,psiz,ptype,parr);
-			if ( (ptype != 3) && parr )
+			//printf(" prop %.*s (%u, %u, %u, %u)\n",l,pname,array,type,(info>>4)&7,psiz);
+			//if ( tl ) printf("  struct: %.*s\n",tl,sname);
+			if ( array && (type != 3) )
 			{
-				printf("%d\n",readbyte());
-				return 1;
+				int idx = readindex();
+				//printf("  index: %d\n",idx);
+			}
+			fpos += psiz;
+			// set bDeleteMe to false
+			if ( !strncasecmp(pname,"bDeleteMe",l) && array )
+			{
+				printf(" toggled bDeleteMe\n");
+				lseek(fd,ptr,SEEK_SET);
+				info &= ~0x80;
+				write(fd,&info,1);
 			}
 			prop = readindex();
-			printf("prop: %d\n",prop);
 			pname = (char*)(pkgfile+getname(prop,&l));
-			// TODO figure out how the fuck structs and arrays actually are structured
-			// because the documentation for this is illegible
-			if ( ptype == 10 )
-			{
-
-			}
 			goto retry;
 		}
 		fpos = prev;
 	}
 	free(pkgfile);
+	close(fd);
 	return 0;
 }

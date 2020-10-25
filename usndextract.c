@@ -354,6 +354,7 @@ int main( int argc, char **argv )
 		if ( head->pkgver < 55 ) fpos += 16;
 		if ( head->pkgver <= 44 ) fpos -= 6;	// ???
 		if ( head->pkgver == 45 ) fpos -= 2;	// ???
+		if ( head->pkgver == 41 ) fpos += 2;	// ???
 		if ( head->pkgver <= 35 ) fpos += 8;	// ???
 		// process properties
 		int32_t prop = readindex();
@@ -371,6 +372,14 @@ retry:
 			int array = info&0x80;
 			int type = info&0xf;
 			int psiz = (info>>4)&0x7;
+			int32_t tl = 0;
+			char *sname;
+			if ( type == 10 )
+			{
+				int32_t sn;
+				sn = readindex();
+				sname = (char*)(pkgfile+getname(sn,&tl));
+			}
 			switch ( psiz )
 			{
 			case 0:
@@ -399,17 +408,11 @@ retry:
 				break;
 			}
 			//printf(" prop %.*s (%u, %u, %u, %u)\n",l,pname,array,type,(info>>4)&7,psiz);
+			//if ( tl ) printf("  struct: %.*s\n",tl,sname);
 			if ( array && (type != 3) )
 			{
 				int idx = readindex();
 				//printf(" index: %d\n",idx);
-			}
-			if ( type == 10 )
-			{
-				int32_t tl, sn;
-				sn = readindex();
-				char *sname = (char*)(pkgfile+getname(sn,&tl));
-				//printf(" struct: %.*s\n",tl,sname);
 			}
 			fpos += psiz;
 			prop = readindex();

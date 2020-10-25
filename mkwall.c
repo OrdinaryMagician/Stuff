@@ -1,8 +1,7 @@
 /*
 	mkwall.c : The de-facto sayachan network wallpaper generator.
 	(C)2015-2017 Marisa Kirisame, UnSX Team. For personal use mostly.
-	Released under the GNU GPLv3 (or any later version).
-	Please refer to <https://gnu.org/licenses/gpl.txt> for license terms.
+	Released under the MIT license.
 */
 #include <stdio.h>
 #include <stdlib.h>

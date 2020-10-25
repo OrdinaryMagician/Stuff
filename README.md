@@ -56,9 +56,7 @@ Random single-file programs I've written in my spare time for small tasks.
   for video playback experiments on a Raspberry Pi with a SPI LCD.
 * wavrip: Cheap WAV file extractor that naively searchs for RIFF headers.
 * withhands: Talk like W.D. Gaster.
-* zfs-rootfs.patch: The original patch for archzfs to support my specific
-  rootfs dataset mountpoint quirks.
 * zimagekver: Quick program to extract version info from an ARM Linux kernel
   image.
 
-All programs and code here are under the GPLv3 unless stated otherwise.
+All programs and code here are under the MIT license.

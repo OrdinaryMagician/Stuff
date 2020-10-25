@@ -2,7 +2,7 @@
 	lutsmooth.c : LUT smoothening.
 	Softens Volume LUTs by applying gaussian blur across all three axes.
 	(C)2017 Marisa Kirisame, UnSX Team.
-	Released under the GNU General Public License version 3 (or later).
+	Released under the MIT license.
 */
 #include <stdio.h>
 #include <stdlib.h>

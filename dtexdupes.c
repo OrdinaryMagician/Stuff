@@ -2,7 +2,7 @@
 	dtexdupes.c : Find textures with identical names in multiple doom mods.
 	Supports wad, pk3 and folders. Handles TEXTURE1/2 and TEXTURES.
 	(C)2018 Marisa Kirisame, UnSX Team.
-	Released under the GNU General Public License version 3 (or later).
+	Released under the MIT license.
 	Requires libarchive. Made for *nix platforms.
 */
 #define _XOPEN_SOURCE 700

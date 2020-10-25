@@ -2,7 +2,7 @@
 	fuzz.c : Fancy software filter.
 	I was bored.
 	(C)2016 Marisa Kirisame, UnSX Team.
-	Released under the GNU GPLv3 (or later).
+	Released under the MIT license.
 */
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>

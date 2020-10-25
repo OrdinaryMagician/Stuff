@@ -2,7 +2,7 @@
 	glfuzz.c : Fancy hardware filter.
 	I was bored.
 	(C)2016 Marisa Kirisame, UnSX Team.
-	Released under the GNU GPLv3 (or later).
+	Released under the MIT license.
 */
 #include <epoxy/gl.h>
 #include <SDL2/SDL.h>
