@@ -6,9 +6,10 @@
 
 int main( int argc, char **argv )
 {
-	if ( argc < 3 ) return 1;
+	if ( argc < 2 ) return 1;
 	char tname[256] = {0};
-	int cell = 0, x = 0, y = 0, w = 0, h = 0;
+	unsigned cell = 0;
+	int x = 0, y = 0, w = 0, h = 0;
 	char cropargs[256] = {0};
 	char cname[256] = {0};
 	char* hargs[7] =
@@ -32,8 +33,8 @@ int main( int argc, char **argv )
 		}
 		strcat(tname,".png");
 		if ( (w <= 0) || (h <= 0) ) continue;
-		printf("%d, %s %+d%+d,%d,%d\n",cell,tname,x,y,w,h);
-		sprintf(cname,"%s/%s_%03d.png",argv[1],argv[2],cell);
+		printf("%u, %s %+d%+d,%d,%d\n",cell,tname,x,y,w,h);
+		sprintf(cname,"%s/%04x.png",argv[1],cell);
 		sprintf(cropargs,"%dx%d%+d%+d",w,h,x,y);
 		int pid = fork();
 		if ( !pid ) execvp(hargs[0],hargs);
