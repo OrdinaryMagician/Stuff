@@ -2,6 +2,7 @@ Random single-file programs I've written in my spare time for small tasks.
 
 * **bleep:** I got bored and decided to write a pc speaker music program.
 * **ckmextract:** Extracts ESP and BSA from Skyrim steam workshop mod archives.
+* **cropng:** Crops PNGs and applies grAb offsets (while respecting existing ones).
 * **cube2enviro:** A simple GL 4.4 program. Loads a cubemap and draws a flattened hemisphere environment map that can be used in Unreal.
 * **ddsinfo:** Shows contents of a DDS header.
 * **dood:** Reads an ENDOOM lump and mirrors every word "down the middle".
