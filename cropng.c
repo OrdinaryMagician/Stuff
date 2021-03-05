@@ -1,11 +1,20 @@
-#define _DEFAULT_SOURCE
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
-#include <endian.h>
 #include <png.h>
+
+uint32_t endianswap( uint32_t n )
+{
+	// if we're in a big endian system, we don't need this
+	uint16_t testme = 0x1234;
+	if ( *(uint8_t*)(&testme) == 0x12 ) return n;
+	uint32_t on;
+	for ( int i=0; i<4; i++ )
+		*(((uint8_t*)(&on))+i) = *(((uint8_t*)(&n))+(3-i));
+	return on;
+}
 
 const char* fmtname( int bd, int col )
 {
@@ -118,13 +127,13 @@ int loadpng( const char *fname, uint8_t **idata, uint32_t *w, uint32_t *h, int32
 		if ( memcmp(unk[i].name,"grAb",4) ) continue;
 		if ( unk[i].size != 8 )
 		{
-			fprintf(stderr," grAb chunk has invalid size '%lu' ('8' expected).\n",unk[i].size);
+			fprintf(stderr," grAb chunk has invalid size '%zu' ('8' expected).\n",unk[i].size);
 			png_destroy_read_struct(&pngp,&infp,0);
 			fclose(pf);
 			return 0;
 		}
-		*x = be32toh(*(uint32_t*)unk[i].data);
-		*y = be32toh(*(uint32_t*)(unk[i].data+4));
+		*x = endianswap(*(uint32_t*)unk[i].data);
+		*y = endianswap(*(uint32_t*)(unk[i].data+4));
 	}
 	if ( *x || *y ) printf(" Read %ux%u%s image with offsets %+d,%+d.\n",*w,*h,fmtname(*bd,*col),*x,*y);
 	else printf(" Read %ux%u%s image.\n",*w,*h,fmtname(*bd,*col));
@@ -178,8 +187,8 @@ int savepng( const char *fname, uint8_t *odata, uint32_t w, uint32_t h, int32_t 
 	if ( x || y )
 	{
 		uint32_t grabs[2];
-		grabs[0] = htobe32(x);
-		grabs[1] = htobe32(y);
+		grabs[0] = endianswap(x);
+		grabs[1] = endianswap(y);
 		png_unknown_chunk grab =
 		{
 			.name = "grAb",
